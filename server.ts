@@ -10,7 +10,22 @@ dotenv.config();
 // In a production app, this would be managed per-user in a session or database.
 let mogoUri: string | null = process.env.MONGODB_URI || null;
 let client: MongoClient | null = null;
-let memoContacts: any[] = []; // In-memory fallback
+
+// Seed data for memory mode so the app isn't empty on first load
+let memoContacts: any[] = [
+  {
+    _id: "demo-id-1",
+    firstName: "Demo",
+    lastName: "User",
+    title: "Product Designer",
+    organization: "vCard Pro",
+    phone: "+1 234 567 890",
+    email: "demo@example.com",
+    address: "Infinite Loop, Cupertino, CA",
+    website: "https://example.com",
+    createdAt: new Date().toISOString()
+  }
+]; 
 
 const app = express();
 const PORT = 3000;
