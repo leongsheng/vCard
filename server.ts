@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
@@ -42,10 +43,17 @@ async function initVite() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    } else {
+      console.warn("⚠ dist folder not found. Please run 'npm run build' first.");
+      app.get("*", (req, res) => {
+        res.status(500).send("Application dist folder is missing. Please build the project.");
+      });
+    }
   }
 }
 
@@ -67,11 +75,13 @@ async function getClient() {
   if (!uri) return null;
   
   try {
-    console.log("Connecting to MongoDB...");
+    console.log("Attempting to connect to MongoDB...");
+    // Direct construction might throw if URI is invalid format
     client = new MongoClient(uri, {
-      connectTimeoutMS: 5000,
-      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 8000,
+      serverSelectionTimeoutMS: 8000,
     });
+    
     await client.connect();
     // Test the connection
     await client.db().admin().ping();
@@ -80,15 +90,17 @@ async function getClient() {
   } catch (err) {
     console.error("✘ MongoDB connection failed:", err);
     client = null;
-    throw err;
+    return null; // Return null instead of throwing to prevent route crashes
   }
 }
 
 // Get configuration status for UI
 app.get("/api/config", async (req, res) => {
-  const uriExists = !!getMongoUri();
+  const uri = getMongoUri();
+  const uriExists = !!uri;
   let connected = false;
   let dbName = "N/A";
+  let errorMsg = null;
   
   if (uriExists) {
     try {
@@ -96,15 +108,20 @@ app.get("/api/config", async (req, res) => {
       if (db) {
         connected = true;
         dbName = db.databaseName;
+      } else {
+        errorMsg = "Connection failed. Please check MONGODB_URI.";
       }
-    } catch (e) {}
+    } catch (e: any) {
+      errorMsg = e.message;
+    }
   }
   
   res.json({ 
     configured: uriExists, 
     mode: uriExists ? "database" : "memory",
     connected,
-    dbName
+    dbName,
+    error: errorMsg
   });
 });
 
@@ -115,7 +132,7 @@ async function getDb() {
     if (!mongo) return null;
     return mongo.db(); 
   } catch (err) {
-    console.error("getDb error:", err);
+    console.error("getDb error details:", err);
     return null;
   }
 }
@@ -243,16 +260,25 @@ app.get("/api/contacts/:id", async (req, res) => {
 });
 
 async function startServer() {
-  await initVite();
+  try {
+    console.log("Initializing server components...");
+    await initVite();
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-    if (process.env.MONGODB_URI) {
-      console.log("✔ MONGODB_URI detected.");
-    } else {
-      console.warn("⚠ Running in Demo Mode (Memory). Set MONGODB_URI for persistent storage.");
-    }
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
+      if (process.env.MONGODB_URI) {
+        console.log("✔ MONGODB_URI detected.");
+      } else {
+        console.warn("⚠ Running in Demo Mode (Memory). Set MONGODB_URI for persistent storage.");
+      }
+    });
+  } catch (err) {
+    console.error("✘ Critical startup error:", err);
+    // Even if Vite fails, we should try to start the API
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT} (Vite/Static failed)`);
+    });
+  }
 }
 
 // Global error handlers

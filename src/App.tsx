@@ -143,8 +143,11 @@ function Dashboard() {
                 <p className="text-[10px] font-bold text-zinc-900 truncate">
                   {sysStatus.mode === "database" ? `MongoDB: ${sysStatus.dbName || "Connected"}` : "Local Memory (Demo)"}
                 </p>
-                {!sysStatus.connected && sysStatus.mode === "database" && (
-                   <p className="text-[8px] text-rose-500 font-bold mt-1">Connection Failed Check URI</p>
+                {sysStatus.error && (
+                   <p className="text-[8px] text-rose-500 font-bold mt-1 leading-tight">{sysStatus.error}</p>
+                )}
+                {!sysStatus.connected && sysStatus.mode === "database" && !sysStatus.error && (
+                   <p className="text-[8px] text-rose-500 font-bold mt-1">Connection Failed</p>
                 )}
              </div>
            )}
