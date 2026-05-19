@@ -81,11 +81,23 @@ function Dashboard() {
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch("/api/config");
+      if (res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          setSysStatus(data);
+        }
+      }
+    } catch (e) {
+      console.error("Config fetch failed:", e);
+    }
+  };
+
   useEffect(() => {
-    fetch("/api/config")
-      .then(res => res.json())
-      .then(setSysStatus)
-      .catch(console.error);
+    fetchConfig();
   }, [refreshTrigger]);
 
   const fetchContactsRequested = () => {
@@ -450,9 +462,15 @@ function ContactsTab({ onEdit, refreshTrigger }: { onEdit: (c: Contact) => void,
     setError(null);
     try {
       const res = await fetch("/api/contacts");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load contacts");
-      setContacts(Array.isArray(data) ? data : []);
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load contacts");
+        setContacts(Array.isArray(data) ? data : []);
+      } else {
+        const text = await res.text();
+        throw new Error(text.substring(0, 50) || "Server returned non-JSON response");
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message);

@@ -120,13 +120,18 @@ async function getDb() {
   }
 }
 
+// Validation helper for MongoDB ObjectId
+const isValidObjectId = (id: string) => {
+  return ObjectId.isValid(id);
+};
+
 // Contacts API
 app.get("/api/contacts", async (req, res) => {
   try {
     const uri = getMongoUri();
     if (uri) {
       const db = await getDb();
-      if (!db) throw new Error("Could not connect to MongoDB. Check your MONGODB_URI.");
+      if (!db) throw new Error("Database connection is not available.");
       const contacts = await db.collection("contacts").find().sort({ createdAt: -1 }).toArray();
       return res.json(contacts);
     }
@@ -141,7 +146,7 @@ app.post("/api/contacts", async (req, res) => {
     const uri = getMongoUri();
     if (uri) {
       const db = await getDb();
-      if (!db) throw new Error("Could not connect to MongoDB. Check your MONGODB_URI.");
+      if (!db) throw new Error("Database connection is not available.");
       const result = await db.collection("contacts").insertOne({
         ...req.body,
         createdAt: new Date()
@@ -167,7 +172,11 @@ app.put("/api/contacts/:id", async (req, res) => {
     const uri = getMongoUri();
     if (uri) {
       const db = await getDb();
-      if (!db) throw new Error("Could not connect to MongoDB. Check your MONGODB_URI.");
+      if (!db) throw new Error("Database connection is not available.");
+      
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({ error: "Invalid contact ID format" });
+      }
       await db.collection("contacts").updateOne(
         { _id: new ObjectId(id) },
         { $set: req.body }
@@ -192,7 +201,10 @@ app.delete("/api/contacts/:id", async (req, res) => {
     const uri = getMongoUri();
     if (uri) {
       const db = await getDb();
-      if (!db) throw new Error("Could not connect to MongoDB. Check your MONGODB_URI.");
+      if (!db) throw new Error("Database connection is not available.");
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({ error: "Invalid contact ID format" });
+      }
       await db.collection("contacts").deleteOne({ _id: new ObjectId(id) });
       return res.json({ success: true });
     }
@@ -211,10 +223,9 @@ app.get("/api/contacts/:id", async (req, res) => {
     
     if (uri) {
       const db = await getDb();
-      if (!db) throw new Error("Could not connect to MongoDB. Check your MONGODB_URI.");
+      if (!db) throw new Error("Database connection is not available.");
       
-      // Basic validation for ObjectId
-      if (!id || id.length !== 24) {
+      if (!isValidObjectId(id)) {
         return res.status(400).json({ error: "Invalid contact ID format" });
       }
       const contact = await db.collection("contacts").findOne({ _id: new ObjectId(id) });
@@ -243,6 +254,15 @@ async function startServer() {
     }
   });
 }
+
+// Global error handlers
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
 
 startServer();
 
