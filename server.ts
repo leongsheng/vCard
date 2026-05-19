@@ -54,40 +54,12 @@ async function initVite() {
 // Helper to ensure mogoUri is always current
 const getMongoUri = () => process.env.MONGODB_URI || mogoUri;
 
-// Save credentials
-app.post("/api/config", async (req, res) => {
-  const { uri } = req.body;
-  if (!uri) return res.status(400).json({ error: "URI is required" });
-  
-  try {
-    const testClient = new MongoClient(uri);
-    await testClient.connect();
-    await testClient.db().admin().ping();
-    await testClient.close();
-    
-    // In a serverless env, this only persists for the CURRENT instance lifecycle.
-    // Explicitly warn the user to use Vercel Env Vars for permanent storage.
-    mogoUri = uri;
-    
-    // Reset existing client if any
-    if (client) {
-      await client.close();
-      client = null;
-    }
-    
-    res.json({ 
-      success: true, 
-      message: "Connected locally. NOTE: For Vercel deployments, please add MONGODB_URI to your Vercel Project Settings for persistent connection." 
-    });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Get configuration status
-app.get("/api/config", (req, res) => {
-  res.json({ configured: true, mode: getMongoUri() ? "database" : "memory" });
-});
+// Log initialization status
+if (process.env.MONGODB_URI) {
+  console.log("✔ MONGODB_URI environment variable detected.");
+} else {
+  console.warn("⚠ MONGODB_URI not found in environment. Running in Demo (Memory) Mode.");
+}
 
 async function getClient() {
   if (client) return client;
@@ -98,12 +70,19 @@ async function getClient() {
   return client;
 }
 
+// Database helper
+async function getDb() {
+  const mongo = await getClient();
+  if (!mongo) return null;
+  // Use DB from URI if present, otherwise default to vcard_pro
+  return mongo.db(); 
+}
+
 // Contacts API
 app.get("/api/contacts", async (req, res) => {
   try {
-    const mongo = await getClient();
-    if (mongo) {
-      const db = mongo.db("vcard_pro");
+    const db = await getDb();
+    if (db) {
       const contacts = await db.collection("contacts").find().toArray();
       return res.json(contacts);
     }
@@ -115,9 +94,8 @@ app.get("/api/contacts", async (req, res) => {
 
 app.post("/api/contacts", async (req, res) => {
   try {
-    const mongo = await getClient();
-    if (mongo) {
-      const db = mongo.db("vcard_pro");
+    const db = await getDb();
+    if (db) {
       const result = await db.collection("contacts").insertOne({
         ...req.body,
         createdAt: new Date()
@@ -140,9 +118,8 @@ app.post("/api/contacts", async (req, res) => {
 app.put("/api/contacts/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const mongo = await getClient();
-    if (mongo) {
-      const db = mongo.db("vcard_pro");
+    const db = await getDb();
+    if (db) {
       await db.collection("contacts").updateOne(
         { _id: new ObjectId(id) },
         { $set: req.body }
@@ -164,9 +141,8 @@ app.put("/api/contacts/:id", async (req, res) => {
 app.delete("/api/contacts/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const mongo = await getClient();
-    if (mongo) {
-      const db = mongo.db("vcard_pro");
+    const db = await getDb();
+    if (db) {
       await db.collection("contacts").deleteOne({ _id: new ObjectId(id) });
       return res.json({ success: true });
     }
@@ -182,13 +158,12 @@ app.get("/api/contacts/:id", async (req, res) => {
   try {
     const { id } = req.params;
     
-    const mongo = await getClient();
-    if (mongo) {
+    const db = await getDb();
+    if (db) {
       // Basic validation for ObjectId
       if (!id || id.length !== 24) {
         return res.status(400).json({ error: "Invalid contact ID format" });
       }
-      const db = mongo.db("vcard_pro");
       const contact = await db.collection("contacts").findOne({ _id: new ObjectId(id) });
       if (!contact) return res.status(404).json({ error: "Contact not found" });
       return res.json(contact);
