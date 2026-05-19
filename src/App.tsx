@@ -1,4 +1,4 @@
-import { useState, useEffect, ReactNode, FormEvent, MouseEvent } from "react";
+import { useState, useEffect, ReactNode, FormEvent, MouseEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, 
@@ -27,7 +27,9 @@ import {
   ExternalLink,
   Copy,
   MessageSquare,
-  QrCode
+  QrCode,
+  User,
+  Upload
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from "react-router-dom";
@@ -307,10 +309,20 @@ function PublicCard() {
                     contact.email ? `EMAIL;TYPE=PREF,INTERNET:${contact.email}` : "",
                     contact.address ? `ADR;TYPE=WORK:;;${contact.address};;;;` : "",
                     contact.website ? `URL:${contact.website}` : "",
-                    contact.profileImage ? `PHOTO;VALUE=URI:${contact.profileImage}` : "",
                     "END:VCARD"
                   ].filter(Boolean).join("\n");
-                  const blob = new Blob([vcardData], { type: "text/vcard;charset=utf-8" });
+                  
+                  // If profile image exists and is base64, add it differently
+                  let finalVcard = vcardData;
+                  if (contact.profileImage && contact.profileImage.startsWith("data:image/")) {
+                      const [mime, base64] = contact.profileImage.split(";base64,");
+                      const type = mime.split("/")[1].split(";")[0].toUpperCase();
+                      finalVcard = finalVcard.replace("END:VCARD", `PHOTO;TYPE=${type};ENCODING=b:${base64}\nEND:VCARD`);
+                  } else if (contact.profileImage) {
+                      finalVcard = finalVcard.replace("END:VCARD", `PHOTO;VALUE=URI:${contact.profileImage}\nEND:VCARD`);
+                  }
+
+                  const blob = new Blob([finalVcard], { type: "text/vcard;charset=utf-8" });
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
@@ -531,8 +543,12 @@ function ContactCard({ contact, onDelete, onEdit, index }: { contact: Contact, o
       )}></div>
       
       <div className="flex justify-between items-start mb-6">
-        <div className="h-14 w-14 bg-zinc-50 text-zinc-900 shadow-inner rounded-2xl flex items-center justify-center font-black text-xl border border-zinc-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-colors">
-          {contact.firstName[0]}{contact.lastName[0]}
+        <div className="h-14 w-14 bg-zinc-50 text-zinc-900 shadow-inner rounded-2xl flex items-center justify-center font-black text-xl border border-zinc-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-colors overflow-hidden">
+          {contact.profileImage ? (
+            <img src={contact.profileImage} className="w-full h-full object-cover" />
+          ) : (
+            <>{contact.firstName[0]}{contact.lastName[0]}</>
+          )}
         </div>
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
           <button 
@@ -644,6 +660,21 @@ function ContactModal({ onClose, onSave, editData }: { onClose: () => void, onSa
     }
   };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1.5 * 1024 * 1024) { // 1.5MB Limit for Base64 (approx 1MB binary)
+        alert("Image too large. Please select a file under 1.5MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, profileImage: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div 
@@ -672,7 +703,34 @@ function ContactModal({ onClose, onSave, editData }: { onClose: () => void, onSa
           <form onSubmit={handleSubmit} className="p-8 overflow-y-auto custom-scrollbar flex-1">
             <h4 className="text-[10px] font-black text-zinc-300 uppercase tracking-widest mb-6 border-b border-zinc-50 pb-2">Appearance</h4>
             <div className="grid grid-cols-1 gap-x-6 gap-y-4 mb-8">
-              <InputField label="Profile Image URL" name="profileImage" value={formData.profileImage} onChange={(v: string) => setFormData({...formData, profileImage: v})} placeholder="https://example.com/avatar.jpg" />
+              <div className="flex items-center gap-6 p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                <div className="w-20 h-20 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center overflow-hidden shrink-0 shadow-sm relative group">
+                  {formData.profileImage ? (
+                    <img src={formData.profileImage} className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="h-8 w-8 text-zinc-200" />
+                  )}
+                  <label className="absolute inset-0 bg-indigo-600/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                    <Upload className="h-5 w-5 text-white" />
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  </label>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-zinc-900 mb-1">Profile Photo</p>
+                  <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
+                    Click the image to upload. Recommendation: Square aspect ratio, under 1MB.
+                  </p>
+                </div>
+                {formData.profileImage && (
+                  <button 
+                    type="button" 
+                    onClick={() => setFormData({...formData, profileImage: ""})}
+                    className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <h4 className="text-[10px] font-black text-zinc-300 uppercase tracking-widest mb-6 border-b border-zinc-50 pb-2">Basic Information</h4>
