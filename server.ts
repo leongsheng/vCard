@@ -260,6 +260,13 @@ app.get("/api/contacts/:id", async (req, res) => {
 });
 
 async function startServer() {
+  if (process.env.VERCEL) {
+    // When running on Vercel, do not call app.listen or init Vite static serving,
+    // Vercel routes API requests natively via vercel.json.
+    console.log("Running on Vercel Serverless Function...");
+    return;
+  }
+
   try {
     console.log("Initializing server components...");
     await initVite();
