@@ -74,23 +74,23 @@ export default function App() {
 function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("contacts");
   const [loading, setLoading] = useState(false);
+  const [sysStatus, setSysStatus] = useState<{configured: boolean, connected: boolean, mode: string, dbName?: string} | null>(null);
 
   // State for global modals
   const [isAdding, setIsAdding] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  useEffect(() => {
+    fetch("/api/config")
+      .then(res => res.json())
+      .then(setSysStatus)
+      .catch(console.error);
+  }, [refreshTrigger]);
+
   const fetchContactsRequested = () => {
     setRefreshTrigger(prev => prev + 1);
   };
-
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-zinc-50">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen bg-zinc-50 text-zinc-900 font-sans overflow-hidden h-screen">
@@ -118,8 +118,25 @@ function Dashboard() {
           />
         </nav>
 
-        <div className="p-4 border-t border-zinc-100">
-           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest text-center">vCard Pro v1.0</p>
+        <div className="p-4 border-t border-zinc-100 space-y-3">
+           {sysStatus && (
+             <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100">
+                <div className="flex items-center justify-between mb-1">
+                   <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Storage</p>
+                   <div className={cn(
+                     "w-1.5 h-1.5 rounded-full",
+                     sysStatus.connected ? "bg-emerald-500 animate-pulse" : "bg-amber-400"
+                   )}></div>
+                </div>
+                <p className="text-[10px] font-bold text-zinc-900 truncate">
+                  {sysStatus.mode === "database" ? `MongoDB: ${sysStatus.dbName || "Connected"}` : "Local Memory (Demo)"}
+                </p>
+                {!sysStatus.connected && sysStatus.mode === "database" && (
+                   <p className="text-[8px] text-rose-500 font-bold mt-1">Connection Failed Check URI</p>
+                )}
+             </div>
+           )}
+           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest text-center">vCard Pro v1.1</p>
         </div>
       </aside>
 
@@ -426,15 +443,19 @@ function SidebarButton({ active, onClick, icon, label, disabled = false }: { act
 function ContactsTab({ onEdit, refreshTrigger }: { onEdit: (c: Contact) => void, refreshTrigger: number, key?: any }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchContacts = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/contacts");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load contacts");
       setContacts(Array.isArray(data) ? data : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -462,7 +483,20 @@ function ContactsTab({ onEdit, refreshTrigger }: { onEdit: (c: Contact) => void,
       animate={{ opacity: 1 }}
       className="space-y-6"
     >
-      {loading ? (
+      {error ? (
+        <div className="flex flex-col items-center justify-center p-12 bg-rose-50 rounded-[2rem] border border-rose-100 text-center">
+          <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
+          <h3 className="text-xl font-bold text-rose-900 mb-2">Connect to DB Fail</h3>
+          <p className="text-rose-600 max-w-md mb-4 text-sm font-medium">{error}</p>
+          <button 
+            onClick={fetchContacts} 
+            className="px-6 py-2 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-colors flex items-center gap-2 mx-auto"
+          >
+            <Database className="h-4 w-4" />
+            Try Reconnect
+          </button>
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 md:col-span-6 lg:col-span-4 h-64 bg-white animate-pulse rounded-[2rem] border border-zinc-100" />
           <div className="col-span-12 md:col-span-6 lg:col-span-8 h-64 bg-white animate-pulse rounded-[2rem] border border-zinc-100" />
@@ -636,10 +670,12 @@ function ContactModal({ onClose, onSave, editData }: { onClose: () => void, onSa
     profileImage: ""
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       const url = editData ? `/api/contacts/${editData._id}` : "/api/contacts";
       const method = editData ? "PUT" : "POST";
@@ -652,9 +688,13 @@ function ContactModal({ onClose, onSave, editData }: { onClose: () => void, onSa
       
       if (res.ok) {
         onSave();
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to save contact");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || "A network error occurred");
     } finally {
       setLoading(false);
     }
@@ -701,6 +741,12 @@ function ContactModal({ onClose, onSave, editData }: { onClose: () => void, onSa
           </div>
 
           <form onSubmit={handleSubmit} className="p-8 overflow-y-auto custom-scrollbar flex-1">
+            {error && (
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-sm font-bold">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
             <h4 className="text-[10px] font-black text-zinc-300 uppercase tracking-widest mb-6 border-b border-zinc-50 pb-2">Appearance</h4>
             <div className="grid grid-cols-1 gap-x-6 gap-y-4 mb-8">
               <div className="flex items-center gap-6 p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
