@@ -70,8 +70,9 @@ export default function App() {
 }
 
 function Dashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>("config");
+  const [activeTab, setActiveTab] = useState<Tab>("contacts");
   const [isConfigured, setIsConfigured] = useState(false);
+  const [configMode, setConfigMode] = useState<"database" | "memory">("memory");
   const [loading, setLoading] = useState(true);
 
   // State for global modals
@@ -92,6 +93,8 @@ function Dashboard() {
       const res = await fetch("/api/config");
       const data = await res.json();
       setIsConfigured(data.configured);
+      setConfigMode(data.mode || "memory");
+      // If configured (even in memory mode) go to contacts
       if (data.configured) {
         setActiveTab("contacts");
       }
@@ -124,17 +127,15 @@ function Dashboard() {
         <nav className="flex-1 px-4 py-4 space-y-2">
           <SidebarButton 
             active={activeTab === "contacts"} 
-            onClick={() => isConfigured && setActiveTab("contacts")}
+            onClick={() => setActiveTab("contacts")}
             icon={<Users className="h-5 w-5" />}
             label="Contacts"
-            disabled={!isConfigured}
           />
           <SidebarButton 
             active={activeTab === "share"} 
-            onClick={() => isConfigured && setActiveTab("share")}
+            onClick={() => setActiveTab("share")}
             icon={<Share2 className="h-5 w-5" />}
             label="Share Hub"
-            disabled={!isConfigured}
           />
           <SidebarButton 
             active={activeTab === "config"} 
@@ -150,12 +151,17 @@ function Dashboard() {
             <div className="flex items-center gap-2">
               <div className={cn(
                 "w-2 h-2 rounded-full",
-                isConfigured ? "bg-emerald-500 animate-pulse" : "bg-zinc-300"
+                configMode === "database" ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
               )}></div>
               <span className="text-xs font-semibold text-indigo-900">
-                {isConfigured ? "Connected: MongoDB" : "Disconnected"}
+                {configMode === "database" ? "Connected: MongoDB" : "Demo Mode: Memory"}
               </span>
             </div>
+            {configMode === "memory" && (
+                <p className="text-[9px] text-indigo-400 font-medium mt-2 leading-tight">
+                    Data will be reset on server restart. Connect MongoDB for persistence.
+                </p>
+            )}
           </div>
         </div>
       </aside>
