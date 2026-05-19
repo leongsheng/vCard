@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 
@@ -10,7 +9,7 @@ dotenv.config();
 // Global variable to store the MongoDB URI for the current session
 // In a production app, this would be managed per-user in a session or database.
 let mogoUri: string | null = process.env.MONGODB_URI || null;
-let client: MongoClient | null = null;
+let clientPromise: Promise<MongoClient | null> | null = null;
 
 // Seed data for memory mode so the app isn't empty on first load
 let memoContacts: any[] = [
@@ -35,7 +34,8 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 async function initVite() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -70,28 +70,29 @@ if (process.env.MONGODB_URI) {
 }
 
 async function getClient() {
-  if (client) return client;
   const uri = getMongoUri();
   if (!uri) return null;
   
-  try {
+  if (!clientPromise) {
     console.log("Attempting to connect to MongoDB...");
-    // Direct construction might throw if URI is invalid format
-    client = new MongoClient(uri, {
+    const client = new MongoClient(uri, {
       connectTimeoutMS: 8000,
       serverSelectionTimeoutMS: 8000,
     });
     
-    await client.connect();
-    // Test the connection
-    await client.db().admin().ping();
-    console.log("✔ Successfully connected to MongoDB");
-    return client;
-  } catch (err) {
-    console.error("✘ MongoDB connection failed:", err);
-    client = null;
-    return null; // Return null instead of throwing to prevent route crashes
+    clientPromise = client.connect().then(async (c) => {
+      // Test the connection
+      await c.db().admin().ping();
+      console.log("✔ Successfully connected to MongoDB");
+      return c;
+    }).catch(err => {
+      console.error("✘ MongoDB connection failed:", err);
+      clientPromise = null;
+      return null;
+    });
   }
+  
+  return clientPromise;
 }
 
 // Get configuration status for UI
