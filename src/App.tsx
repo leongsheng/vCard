@@ -54,7 +54,7 @@ interface Contact {
   createdAt?: string;
 }
 
-type Tab = "contacts" | "share" | "config";
+type Tab = "contacts" | "share";
 
 // --- Components ---
 
@@ -71,9 +71,7 @@ export default function App() {
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("contacts");
-  const [isConfigured, setIsConfigured] = useState(false);
-  const [configMode, setConfigMode] = useState<"database" | "memory">("memory");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // State for global modals
   const [isAdding, setIsAdding] = useState(false);
@@ -82,27 +80,6 @@ function Dashboard() {
 
   const fetchContactsRequested = () => {
     setRefreshTrigger(prev => prev + 1);
-  };
-
-  useEffect(() => {
-    checkConfig();
-  }, []);
-
-  const checkConfig = async () => {
-    try {
-      const res = await fetch("/api/config");
-      const data = await res.json();
-      setIsConfigured(data.configured);
-      setConfigMode(data.mode || "memory");
-      // If configured (even in memory mode) go to contacts
-      if (data.configured) {
-        setActiveTab("contacts");
-      }
-    } catch (err) {
-      console.error("Failed to check config", err);
-    } finally {
-      setLoading(false);
-    }
   };
 
   if (loading) {
@@ -137,32 +114,10 @@ function Dashboard() {
             icon={<Share2 className="h-5 w-5" />}
             label="Share Hub"
           />
-          <SidebarButton 
-            active={activeTab === "config"} 
-            onClick={() => setActiveTab("config")}
-            icon={<Settings className="h-5 w-5" />}
-            label="Database Config"
-          />
         </nav>
 
         <div className="p-4 border-t border-zinc-100">
-          <div className="bg-indigo-50 p-4 rounded-2xl">
-            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-2">System Status</p>
-            <div className="flex items-center gap-2">
-              <div className={cn(
-                "w-2 h-2 rounded-full",
-                configMode === "database" ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
-              )}></div>
-              <span className="text-xs font-semibold text-indigo-900">
-                {configMode === "database" ? "Connected: MongoDB" : "Demo Mode: Memory"}
-              </span>
-            </div>
-            {configMode === "memory" && (
-                <p className="text-[9px] text-indigo-400 font-medium mt-2 leading-tight">
-                    Data will be reset on server restart. Connect MongoDB for persistence.
-                </p>
-            )}
-          </div>
+           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest text-center">vCard Pro v1.0</p>
         </div>
       </aside>
 
@@ -173,16 +128,14 @@ function Dashboard() {
             <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight">
               {activeTab === "contacts" && "Contact Dashboard"}
               {activeTab === "share" && "Sharing Hub"}
-              {activeTab === "config" && "System Configuration"}
             </h1>
             <p className="text-zinc-500 text-sm mt-1">
               {activeTab === "contacts" && "Manage your professional connections and digital business cards."}
               {activeTab === "share" && "Generate and export high-quality vCards for your network."}
-              {activeTab === "config" && "Setup and manage your MongoDB storage credentials."}
             </p>
           </div>
           
-          {activeTab === "contacts" && isConfigured && (
+          {activeTab === "contacts" && (
              <div className="relative group">
                 <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
                 <button
@@ -198,11 +151,9 @@ function Dashboard() {
 
         <div className="flex-1">
           <AnimatePresence mode="wait">
-            {activeTab === "config" && (
-              <ConfigurationTab key="config" onConfigured={() => { setIsConfigured(true); setActiveTab("contacts"); }} />
-            )}
             {activeTab === "contacts" && (
               <ContactsTab 
+                key="contacts"
                 onEdit={(c) => { setEditingContact(c); setIsAdding(true); }} 
                 refreshTrigger={refreshTrigger}
               />
@@ -459,129 +410,8 @@ function SidebarButton({ active, onClick, icon, label, disabled = false }: { act
   );
 }
 
-function ConfigurationTab({ onConfigured }: { onConfigured: () => void, key?: any }) {
-  const [uri, setUri] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [message, setMessage] = useState("");
 
-  const handleConnect = async (e: FormEvent) => {
-    e.preventDefault();
-    setStatus("loading");
-    setMessage("");
-
-    try {
-      const res = await fetch("/api/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uri }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setStatus("success");
-        setMessage("Database connected successfully!");
-        setTimeout(onConfigured, 1500);
-      } else {
-        setStatus("error");
-        setMessage(data.error || "Failed to connect to MongoDB.");
-      }
-    } catch (err) {
-      setStatus("error");
-      setMessage("A network error occurred.");
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -30 }}
-      className="max-w-4xl"
-    >
-       <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-12 lg:col-span-8 bg-white rounded-[2rem] p-10 border border-zinc-200 shadow-sm relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500 opacity-[0.03] rounded-full blur-3xl -mr-32 -mt-32"></div>
-             
-             <div className="flex items-center gap-5 mb-10">
-                <div className="p-4 bg-amber-50 text-amber-500 rounded-2xl">
-                   <Database className="h-8 w-8" />
-                </div>
-                <div>
-                   <h2 className="text-2xl font-black text-zinc-900">Database Connection</h2>
-                   <p className="text-zinc-500">Secure your database backend for persistent storage.</p>
-                </div>
-             </div>
-
-             <form onSubmit={handleConnect} className="space-y-8 relative z-10">
-                <div>
-                   <label className="block text-xs font-black text-zinc-400 uppercase tracking-widest mb-3">Connection String</label>
-                   <div className="bg-zinc-50 p-1 rounded-2xl border border-zinc-200 focus-within:border-indigo-500 transition-colors">
-                      <input
-                        type="password"
-                        placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
-                        className="w-full px-5 py-4 bg-transparent outline-none font-mono text-sm"
-                        value={uri}
-                        onChange={(e) => setUri(e.target.value)}
-                        required
-                      />
-                   </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                   <p className="text-xs text-zinc-400 max-w-sm italic">
-                      Note: Credentials are held in server memory for the duration of this session only.
-                   </p>
-                   <button
-                      type="submit"
-                      disabled={status === "loading"}
-                      className={cn(
-                        "px-8 py-4 rounded-xl font-bold text-white flex items-center gap-3 transition-all cursor-pointer shadow-xl",
-                        status === "loading" ? "bg-zinc-400" : "bg-zinc-900 hover:bg-zinc-800 shadow-zinc-200"
-                      )}
-                   >
-                      {status === "loading" ? <Loader2 className="animate-spin h-5 w-5" /> : <Database className="h-5 w-5 text-indigo-400" />}
-                      Start Connection
-                   </button>
-                </div>
-             </form>
-
-             {message && (
-                <motion.div
-                   initial={{ opacity: 0, scale: 0.95 }}
-                   animate={{ opacity: 1, scale: 1 }}
-                   className={cn(
-                      "mt-8 p-5 rounded-2xl flex items-center gap-4",
-                      status === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-700 border border-rose-100"
-                   )}
-                >
-                   {status === "success" ? <CheckCircle2 className="h-6 w-6 shrink-0" /> : <AlertCircle className="h-6 w-6 shrink-0" />}
-                   <span className="font-bold">{message}</span>
-                </motion.div>
-             )}
-          </div>
-
-          <div className="col-span-12 lg:col-span-4 bg-indigo-600 rounded-[2rem] p-8 text-white flex flex-col justify-between shadow-2xl shadow-indigo-200 relative overflow-hidden group">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-[0.05] rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700"></div>
-             <div>
-                <h3 className="text-xl font-black mb-2 leading-tight">Pro Storage Active</h3>
-                <p className="text-indigo-100 text-sm opacity-80">Connected cluster allows for infinite contact synchronization across devices.</p>
-             </div>
-             <div className="flex items-end justify-between mt-8">
-                <div>
-                   <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Storage Used</p>
-                   <p className="text-3xl font-black tabular-nums">0.0<span className="text-lg opacity-50"> KB</span></p>
-                </div>
-                <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
-                   <Settings className="h-6 w-6" />
-                </div>
-             </div>
-          </div>
-       </div>
-    </motion.div>
-  );
-}
-
-function ContactsTab({ onEdit, refreshTrigger }: { onEdit: (c: Contact) => void, refreshTrigger: number }) {
+function ContactsTab({ onEdit, refreshTrigger }: { onEdit: (c: Contact) => void, refreshTrigger: number, key?: any }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -971,7 +801,7 @@ function InputField({ label, name, value, onChange, type = "text", required = fa
   );
 }
 
-function ShareTab() {
+function ShareTab({ key }: { key?: any } = {}) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [loading, setLoading] = useState(true);
